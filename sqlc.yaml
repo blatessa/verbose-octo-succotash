@@ -1,0 +1,11 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "internal/auth/db/queries/"
+    schema: "internal/auth/db/migrations/"
+    gen:
+      go:
+        package: "authdb"
+        out: "internal/auth/db"
+        sql_package: "pgx/v5"
+        emit_interface: true
