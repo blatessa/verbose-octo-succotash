@@ -11,6 +11,8 @@ import (
 
 	"github.com/blatessa/verbose-octo-succotash/internal/auth"
 	authdb "github.com/blatessa/verbose-octo-succotash/internal/auth/db"
+	"github.com/blatessa/verbose-octo-succotash/internal/workspace"
+	workspacedb "github.com/blatessa/verbose-octo-succotash/internal/workspace/db"
 	pkgdb "github.com/blatessa/verbose-octo-succotash/pkg/db"
 )
 
@@ -24,7 +26,10 @@ func main() {
 	defer pool.Close()
 
 	if err := authdb.Migrate(ctx, pool); err != nil {
-		log.Fatalf("migrate: %v", err)
+		log.Fatalf("migrate auth: %v", err)
+	}
+	if err := workspacedb.Migrate(ctx, pool); err != nil {
+		log.Fatalf("migrate workspace: %v", err)
 	}
 
 	authCfg := auth.Config{
@@ -44,6 +49,14 @@ func main() {
 	})
 
 	authHandler.RegisterRoutes(mux, "/api/auth")
+
+	// Workspace routes sit behind auth middleware.
+	workspaceMux := http.NewServeMux()
+	workspace.NewHandler(
+		workspace.NewService(workspacedb.New(pool)),
+	).RegisterRoutes(workspaceMux, "/api/workspaces")
+	mux.Handle("/api/workspaces", auth.Middleware(authCfg)(workspaceMux))
+	mux.Handle("/api/workspaces/", auth.Middleware(authCfg)(workspaceMux))
 
 	log.Println("Listening on :8080")
 	log.Fatal(http.ListenAndServe(":8080", mux))
