@@ -21,6 +21,17 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, prefix string) {
 	mux.HandleFunc("POST "+prefix+"/login", h.login)
 }
 
+// authResponse is the HTTP response shape for both register and login.
+type authResponse struct {
+	Token string   `json:"token"`
+	User  userJSON `json:"user"`
+}
+
+type userJSON struct {
+	ID    string `json:"id"`
+	Email string `json:"email"`
+}
+
 type registerRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
@@ -42,13 +53,16 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.svc.CreateUser(r.Context(), req.Email, req.Password)
+	user, token, err := h.svc.CreateUser(r.Context(), req.Email, req.Password)
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "could not create user")
 		return
 	}
 
-	httputil.JSON(w, http.StatusCreated, resp)
+	httputil.JSON(w, http.StatusCreated, authResponse{
+		Token: token,
+		User:  userJSON{ID: user.ID, Email: user.Email},
+	})
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
@@ -58,7 +72,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.svc.Login(r.Context(), req.Email, req.Password)
+	user, token, err := h.svc.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		if errors.Is(err, ErrInvalidCredentials) {
 			httputil.Error(w, http.StatusUnauthorized, "invalid credentials")
@@ -68,5 +82,8 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.JSON(w, http.StatusOK, resp)
+	httputil.JSON(w, http.StatusOK, authResponse{
+		Token: token,
+		User:  userJSON{ID: user.ID, Email: user.Email},
+	})
 }

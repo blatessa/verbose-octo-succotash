@@ -11,6 +11,13 @@ import (
 
 var ErrInvalidCredentials = errors.New("auth: invalid credentials")
 
+// User is the auth package's domain type for a registered user.
+// It never exposes the password hash.
+type User struct {
+	ID    string
+	Email string
+}
+
 type Service struct {
 	q   *authdb.Queries
 	cfg Config
@@ -20,70 +27,44 @@ func NewService(q *authdb.Queries, cfg Config) *Service {
 	return &Service{q: q, cfg: cfg}
 }
 
-type UserResponse struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
-}
-
-type AuthResponse struct {
-	Token string       `json:"token"`
-	User  UserResponse `json:"user"`
-}
-
-// CreateUser registers a new user and returns a signed JWT.
-func (s *Service) CreateUser(ctx context.Context, email, password string) (AuthResponse, error) {
+// CreateUser registers a new user and returns the created User plus a signed JWT.
+func (s *Service) CreateUser(ctx context.Context, email, password string) (User, string, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return AuthResponse{}, fmt.Errorf("auth: hash password: %w", err)
+		return User{}, "", fmt.Errorf("auth: hash password: %w", err)
 	}
 
-	user, err := s.q.CreateUser(ctx, authdb.CreateUserParams{
+	row, err := s.q.CreateUser(ctx, authdb.CreateUserParams{
 		Email:        email,
 		PasswordHash: string(hash),
 	})
 	if err != nil {
-		return AuthResponse{}, fmt.Errorf("auth: create user: %w", err)
+		return User{}, "", fmt.Errorf("auth: create user: %w", err)
 	}
 
-	id := fmt.Sprintf("%x-%x-%x-%x-%x",
-		user.ID.Bytes[0:4], user.ID.Bytes[4:6],
-		user.ID.Bytes[6:8], user.ID.Bytes[8:10],
-		user.ID.Bytes[10:16],
-	)
-	token, err := GenerateToken(id, user.Email, s.cfg)
+	u := User{ID: row.ID.String(), Email: row.Email}
+	token, err := GenerateToken(u.ID, u.Email, s.cfg)
 	if err != nil {
-		return AuthResponse{}, err
+		return User{}, "", err
 	}
-
-	return AuthResponse{
-		Token: token,
-		User:  UserResponse{ID: id, Email: user.Email},
-	}, nil
+	return u, token, nil
 }
 
-// Login validates credentials and returns a signed JWT.
-func (s *Service) Login(ctx context.Context, email, password string) (AuthResponse, error) {
-	user, err := s.q.GetUserByEmail(ctx, email)
+// Login validates credentials and returns the User plus a signed JWT.
+func (s *Service) Login(ctx context.Context, email, password string) (User, string, error) {
+	row, err := s.q.GetUserByEmail(ctx, email)
 	if err != nil {
-		return AuthResponse{}, ErrInvalidCredentials
+		return User{}, "", ErrInvalidCredentials
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		return AuthResponse{}, ErrInvalidCredentials
+	if err := bcrypt.CompareHashAndPassword([]byte(row.PasswordHash), []byte(password)); err != nil {
+		return User{}, "", ErrInvalidCredentials
 	}
 
-	id := fmt.Sprintf("%x-%x-%x-%x-%x",
-		user.ID.Bytes[0:4], user.ID.Bytes[4:6],
-		user.ID.Bytes[6:8], user.ID.Bytes[8:10],
-		user.ID.Bytes[10:16],
-	)
-	token, err := GenerateToken(id, user.Email, s.cfg)
+	u := User{ID: row.ID.String(), Email: row.Email}
+	token, err := GenerateToken(u.ID, u.Email, s.cfg)
 	if err != nil {
-		return AuthResponse{}, err
+		return User{}, "", err
 	}
-
-	return AuthResponse{
-		Token: token,
-		User:  UserResponse{ID: id, Email: user.Email},
-	}, nil
+	return u, token, nil
 }
