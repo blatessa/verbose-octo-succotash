@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/blatessa/verbose-octo-succotash/internal/auth"
 	"github.com/blatessa/verbose-octo-succotash/pkg/httputil"
+	"github.com/blatessa/verbose-octo-succotash/pkg/reqctx"
 )
 
 type Handler struct {
@@ -35,7 +35,7 @@ type createRequest struct {
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
-	claims, ok := auth.ClaimsFromContext(r.Context())
+	userID, ok := reqctx.UserID(r.Context())
 	if !ok {
 		httputil.Error(w, http.StatusUnauthorized, "unauthorized")
 		return
@@ -51,7 +51,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ws, err := h.svc.Create(r.Context(), req.Name, claims.UserID)
+	ws, err := h.svc.Create(r.Context(), req.Name, userID)
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "could not create workspace")
 		return
@@ -61,13 +61,13 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
-	claims, ok := auth.ClaimsFromContext(r.Context())
+	userID, ok := reqctx.UserID(r.Context())
 	if !ok {
 		httputil.Error(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	workspaces, err := h.svc.ListByOwner(r.Context(), claims.UserID)
+	workspaces, err := h.svc.ListByOwner(r.Context(), userID)
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "could not list workspaces")
 		return

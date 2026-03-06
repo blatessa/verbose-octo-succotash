@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -11,17 +10,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/blatessa/verbose-octo-succotash/pkg/reqctx"
 )
-
-type contextKey string
-
-const claimsKey contextKey = "claims"
-
-// ClaimsFromContext retrieves the JWT claims stored by Middleware.
-func ClaimsFromContext(ctx context.Context) (Claims, bool) {
-	c, ok := ctx.Value(claimsKey).(Claims)
-	return c, ok
-}
 
 var (
 	ErrTokenExpired = errors.New("auth: token expired")
@@ -88,7 +79,8 @@ func ValidateToken(token string, cfg Config) (Claims, error) {
 	return c, nil
 }
 
-// Middleware validates the Bearer JWT on every request before calling next.
+// Middleware validates the Bearer JWT and stores the user ID in context
+// via pkg/reqctx so downstream handlers don't need to import this package.
 func Middleware(cfg Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -102,7 +94,7 @@ func Middleware(cfg Config) func(http.Handler) http.Handler {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			ctx := context.WithValue(r.Context(), claimsKey, claims)
+			ctx := reqctx.WithUserID(r.Context(), claims.UserID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
