@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -11,6 +12,16 @@ import (
 	"strings"
 	"time"
 )
+
+type contextKey string
+
+const claimsKey contextKey = "auth_claims"
+
+// ClaimsFromContext retrieves the JWT Claims stored by Middleware.
+func ClaimsFromContext(ctx context.Context) (Claims, bool) {
+	c, ok := ctx.Value(claimsKey).(Claims)
+	return c, ok
+}
 
 var (
 	ErrTokenExpired = errors.New("auth: token expired")
@@ -86,11 +97,13 @@ func Middleware(cfg Config) func(http.Handler) http.Handler {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			if _, err := ValidateToken(strings.TrimPrefix(header, "Bearer "), cfg); err != nil {
+			claims, err := ValidateToken(strings.TrimPrefix(header, "Bearer "), cfg)
+			if err != nil {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			next.ServeHTTP(w, r)
+			ctx := context.WithValue(r.Context(), claimsKey, claims)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
