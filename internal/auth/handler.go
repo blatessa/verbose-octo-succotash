@@ -1,9 +1,10 @@
 package auth
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
+
+	"github.com/blatessa/verbose-octo-succotash/pkg/httputil"
 )
 
 type Handler struct {
@@ -16,8 +17,8 @@ func NewHandler(svc *Service) *Handler {
 
 // RegisterRoutes mounts the auth endpoints onto mux under the given prefix.
 func (h *Handler) RegisterRoutes(mux *http.ServeMux, prefix string) {
-	mux.HandleFunc(prefix+"/register", h.register)
-	mux.HandleFunc(prefix+"/login", h.login)
+	mux.HandleFunc("POST "+prefix+"/register", h.register)
+	mux.HandleFunc("POST "+prefix+"/login", h.login)
 }
 
 type registerRequest struct {
@@ -31,52 +32,41 @@ type loginRequest struct {
 }
 
 func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
 	var req registerRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+	if err := httputil.Decode(r, &req); err != nil {
+		httputil.Error(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if req.Email == "" || req.Password == "" {
-		http.Error(w, "email and password are required", http.StatusBadRequest)
+		httputil.Error(w, http.StatusBadRequest, "email and password are required")
 		return
 	}
 
 	resp, err := h.svc.CreateUser(r.Context(), req.Email, req.Password)
 	if err != nil {
-		http.Error(w, "could not create user", http.StatusInternalServerError)
+		httputil.Error(w, http.StatusInternalServerError, "could not create user")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(resp)
+	httputil.JSON(w, http.StatusCreated, resp)
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
 	var req loginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+	if err := httputil.Decode(r, &req); err != nil {
+		httputil.Error(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	resp, err := h.svc.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		if errors.Is(err, ErrInvalidCredentials) {
-			http.Error(w, "invalid credentials", http.StatusUnauthorized)
+			httputil.Error(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		httputil.Error(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	httputil.JSON(w, http.StatusOK, resp)
 }
