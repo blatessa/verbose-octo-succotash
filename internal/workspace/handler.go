@@ -16,12 +16,12 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// RegisterRoutes mounts workspace endpoints onto mux under the given prefix.
-// All routes require a valid JWT (wrap mux with auth.Middleware before calling).
-func (h *Handler) RegisterRoutes(mux *http.ServeMux, prefix string) {
-	mux.HandleFunc("POST "+prefix, h.create)
-	mux.HandleFunc("GET "+prefix, h.list)
-	mux.HandleFunc("GET "+prefix+"/{id}", h.get)
+// RegisterRoutes mounts workspace endpoints onto mux under the given prefix,
+// wrapping each route with the provided middleware (e.g. auth.Middleware).
+func (h *Handler) RegisterRoutes(mux *http.ServeMux, prefix string, mid func(http.Handler) http.Handler) {
+	mux.Handle("POST "+prefix, mid(http.HandlerFunc(h.create)))
+	mux.Handle("GET "+prefix, mid(http.HandlerFunc(h.list)))
+	mux.Handle("GET "+prefix+"/{id}", mid(http.HandlerFunc(h.get)))
 }
 
 type workspaceJSON struct {
@@ -35,11 +35,7 @@ type createRequest struct {
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
-	userID, ok := reqctx.UserID(r.Context())
-	if !ok {
-		httputil.Error(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
+	userID := reqctx.MustUserID(r.Context())
 
 	var req createRequest
 	if err := httputil.Decode(r, &req); err != nil {
@@ -61,11 +57,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
-	userID, ok := reqctx.UserID(r.Context())
-	if !ok {
-		httputil.Error(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
+	userID := reqctx.MustUserID(r.Context())
 
 	workspaces, err := h.svc.ListByOwner(r.Context(), userID)
 	if err != nil {
